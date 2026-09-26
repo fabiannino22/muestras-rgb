@@ -81,11 +81,12 @@ de cada salida) y avisa de cualquier archivo que no procesó.
 - Las **muestras salen dentro de la carpeta del cliente** (subcarpeta `muestras/`),
   porque son el entregable que se envía; no se acumulan aquí.
 
-## A futuro: e22labs (apuntado 2026-09-26, sin fecha)
+## A futuro: Estudio Veintidós Lab / e22lab (apuntado 2026-09-26, sin fecha)
 
 La visión es convertir esto en una **herramienta gratuita de distribución pública**
-bajo el sello **e22labs**, para que cualquier diseñador que imprima se salte el tener
-que programar un lote de acciones en Photoshop o convertir a mano.
+bajo el sello **Estudio Veintidós Lab** (`e22lab`, dominio
+`estudioveintidoslab.com`), para que cualquier diseñador que imprima se salte el
+tener que programar un lote de acciones en Photoshop o convertir a mano.
 
 Orden previsto (cada paso desbloquea el siguiente):
 
@@ -93,9 +94,9 @@ Orden previsto (cada paso desbloquea el siguiente):
 2. **Ejecutable drag & drop** (PyInstaller + una GUI mínima): es el paso que de verdad
    la vuelve usable para quien no abre una consola. Sin esto, la adopción externa es
    cercana a cero.
-3. **Video demo + landing de e22labs**: rinden después del ejecutable, no antes; un
+3. **Video demo + landing de e22lab**: rinden después del ejecutable, no antes; un
    video de "suelta tu carpeta de CMYK, recibe tus muestras RGB" es lo que convierte.
-4. **Más repos de e22labs**: irán saliendo de `studio-lab` (QC de entregas, PSD→spec)
+4. **Más repos de e22lab**: irán saliendo de `studio-lab` (QC de entregas, PSD→spec)
    cuando cada uno tenga readme y ejemplo propios.
 
 **Mientras no exista el ejecutable, esto NO se publica:** queda privado como el resto
