@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+# Salidas del script y piezas de clientes: nunca al repo
+muestras/
+pruebas/
+*.jpg
+*.jpeg
