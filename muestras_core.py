@@ -22,10 +22,13 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageCms, ImageDraw, ImageFont
 
+import textos
+from textos import t
+
 # Las piezas de impresion superan el limite anti-"image bomb" de Pillow.
 Image.MAX_IMAGE_PIXELS = None
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 EXTENSIONES = (".jpg", ".jpeg", ".tif", ".tiff")
 
@@ -69,6 +72,7 @@ class Opciones:
     marca_logo: str = ""        # PNG con transparencia (vacio = sin logo); manda sobre el texto
     marca_posicion: str = "centro"
     marca_opacidad: int = 35    # %
+    idioma: str = "es"          # de los motivos y notas (ver textos.py)
 
 
 @dataclass
@@ -193,12 +197,12 @@ def leer_perfil(ruta):
 
 def descripcion_perfil(icc):
     if not icc:
-        return "(sin perfil)"
+        return t("sin_perfil")
     try:
         return ImageCms.getProfileDescription(
             ImageCms.ImageCmsProfile(ImageCms.core.profile_frombytes(icc))).strip()
     except Exception:
-        return "(perfil ilegible)"
+        return t("perfil_ilegible")
 
 
 def _convertir(img, icc, modo_entrada):
@@ -226,7 +230,7 @@ def a_rgb(img):
             return _convertir(img, icc, img.mode)
         except ImageCms.PyCMSError:
             # Perfil que no corresponde al modo (p. ej. RGB con perfil CMYK).
-            raise ValueError("el perfil incrustado no corresponde al modo de color")
+            raise ValueError(t("perfil_no_corresponde"))
     # Sin perfil (RGB o gris) no hay como adivinar el origen: se asume sRGB.
     return img if img.mode == "RGB" else img.convert("RGB")
 
@@ -353,9 +357,10 @@ def tintas_directas(img):
 
 def procesar(ruta, salida, opciones):
     """Convierte un archivo. Nunca lanza excepcion: el error queda en el Resultado."""
+    textos.usar(opciones.idioma)     # cada proceso de conversion trae su idioma
     r = Resultado(origen=ruta, salida=salida or "")
     if salida is None:
-        r.estado, r.motivo = "saltado", "ya existe en la carpeta de salida"
+        r.estado, r.motivo = "saltado", t("ya_existe")
         return r
     try:
         with Image.open(ruta) as img:
@@ -366,28 +371,26 @@ def procesar(ruta, salida, opciones):
             r.perfil_origen = descripcion_perfil(icc)
             if img.mode not in MODOS_SOPORTADOS:
                 r.estado = "saltado"
-                r.motivo = f"modo {img.mode} no soportado"
+                r.motivo = t("modo_no_soportado", modo=img.mode)
                 if img.mode.startswith("I;16") or img.mode in ("I", "F"):
-                    r.motivo += " (gris de 16/32 bits: guárdalo en 8 bits)"
+                    r.motivo += t("gris_16")
                 return r
             if img.mode == "CMYK" and not icc:
                 if not opciones.perfil_cmyk:
                     r.estado = "saltado"
-                    r.motivo = "CMYK sin perfil incrustado: no se adivina el origen"
+                    r.motivo = t("cmyk_sin_perfil")
                     return r
                 # Lo mismo que hace Photoshop con su espacio de trabajo CMYK, pero a la vista.
                 icc = leer_perfil(opciones.perfil_cmyk)
-                r.perfil_origen = descripcion_perfil(icc) + " (asumido)"
+                r.perfil_origen = descripcion_perfil(icc) + t("asumido")
                 r.estado = "aviso"
-                r.motivo = f"sin perfil incrustado: se asumió «{descripcion_perfil(icc)}»"
+                r.motivo = t("perfil_asumido", desc=descripcion_perfil(icc))
             directas = tintas_directas(img)
             if directas:
                 r.estado = "aviso"
-                nombres = ", ".join(f"«{n}»" for n in directas)
-                r.motivo = (r.motivo + "; " if r.motivo else "") + (
-                    f"la muestra no incluye la tinta directa {nombres} (solo CMYK)")
-                r.nota_cliente = (f"Lleva la tinta directa {nombres}, que no se puede simular "
-                                  "en esta muestra.")
+                nombres = ", ".join(t("comillas", n=n) for n in directas)
+                r.motivo = (r.motivo + "; " if r.motivo else "") + t("tinta_aviso", nombres=nombres)
+                r.nota_cliente = t("tinta_cliente", nombres=nombres)
             img.thumbnail((opciones.lado, opciones.lado), Image.LANCZOS)
             img.info["icc_profile"] = icc
             rgb = aplicar_marca(a_rgb(img), opciones)
@@ -398,7 +401,7 @@ def procesar(ruta, salida, opciones):
             r.ancho, r.alto = rgb.size
         r.peso = os.path.getsize(salida)
     except Image.UnidentifiedImageError:
-        r.estado, r.motivo = "error", "no se pudo leer (archivo dañado o no es imagen)"
+        r.estado, r.motivo = "error", t("no_se_pudo_leer")
     except Exception as e:
         r.estado, r.motivo = "error", f"{type(e).__name__}: {e}"
     return r

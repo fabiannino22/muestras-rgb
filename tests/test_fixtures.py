@@ -17,6 +17,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
 import hoja_contactos  # noqa: E402
 import muestras_core as core  # noqa: E402
+import textos  # noqa: E402
 
 FIXTURES = os.path.join(RAIZ, "fixtures", "tiff")
 ESPERADO = {
@@ -161,6 +162,39 @@ class TestEntrega(unittest.TestCase):
                           os.path.join(self.tmp.name, "td.jpg"), core.Opciones(lado=300))
         self.assertIn("Tinta directa prueba", r.nota_cliente)
         self.assertEqual(self._muestra("sin_nota").nota_cliente, "")
+
+
+class TestIdiomas(unittest.TestCase):
+    """Los mismos resultados en espanol y en ingles; ninguna clave falta en un idioma."""
+
+    def tearDown(self):
+        textos.usar("es")
+
+    def test_todas_las_claves_en_ambos_idiomas(self):
+        for clave, por_idioma in textos.TEXTOS.items():
+            with self.subTest(clave):
+                self.assertEqual(set(por_idioma), set(textos.IDIOMAS))
+                self.assertTrue(all(por_idioma.values()))
+
+    def test_resolver(self):
+        self.assertEqual(textos.resolver("auto", "es_MX"), "es")
+        self.assertEqual(textos.resolver("auto", "Spanish_Mexico"), "es")
+        self.assertEqual(textos.resolver("auto", "de_DE"), "en")
+        self.assertEqual(textos.resolver("es", "en_US"), "es")
+
+    def test_motivos_y_hoja_en_ingles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            opciones = core.Opciones(lado=300, idioma="en")
+            r = core.procesar(os.path.join(FIXTURES, "08bit_tintadirecta_lzw.tif"),
+                              os.path.join(tmp, "td.jpg"), opciones)
+            self.assertIn("spot color “Tinta directa prueba”", r.motivo)
+            self.assertIn("can't be simulated", r.nota_cliente)
+            r2 = core.procesar(os.path.join(FIXTURES, "08bit_sinperfil_lzw.tif"),
+                               os.path.join(tmp, "sp.jpg"), opciones)
+            self.assertIn("untagged CMYK", r2.motivo)
+            textos.usar("en")
+            self.assertEqual(hoja_contactos.medida_impresion(r), "6.67 × 6.67 in at 300 dpi")
+            self.assertEqual(hoja_contactos.crear([r], os.path.join(tmp, "s.pdf"), "Fall"), 1)
 
 
 if __name__ == "__main__":

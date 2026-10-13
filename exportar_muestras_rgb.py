@@ -16,6 +16,8 @@ import time
 
 import hoja_contactos
 import muestras_core as core
+import textos
+from textos import t
 
 
 def parse_args():
@@ -48,6 +50,8 @@ def parse_args():
                    help="Crea un PDF con todas las muestras y este titulo en la carpeta de salida")
     p.add_argument("--pagina", choices=tuple(hoja_contactos.PAGINAS), default="carta",
                    help="Tamano de pagina de la hoja de contactos (default: carta)")
+    p.add_argument("--idioma", choices=textos.IDIOMAS, default="es",
+                   help="Idioma de los avisos y de la hoja de contactos (default: es)")
     p.add_argument("--si-existe", choices=core.SI_EXISTE, default="numerar",
                    help="Si la muestra ya existe: numerar (default), sobrescribir o saltar")
     return p.parse_args()
@@ -61,7 +65,8 @@ def main():
                              prefijo=args.prefijo, sufijo=args.sufijo, si_existe=args.si_existe,
                              perfil_cmyk=args.perfil_cmyk, marca_texto=args.marca_texto,
                              marca_logo=args.marca_logo, marca_posicion=args.marca_posicion,
-                             marca_opacidad=args.marca_opacidad)
+                             marca_opacidad=args.marca_opacidad, idioma=args.idioma)
+    textos.usar(args.idioma)
 
     if args.perfil_cmyk and not core.es_perfil_cmyk(args.perfil_cmyk):
         raise SystemExit(f"--perfil-cmyk: {args.perfil_cmyk} no es un perfil ICC CMYK")
@@ -94,7 +99,8 @@ def main():
           f"{time.time()-t0:.0f}s")
     if args.hoja_contactos is not None and any(r.estado in ("ok", "aviso") for r in resultados):
         titulo = args.hoja_contactos or os.path.basename(carpeta)
-        pdf = os.path.join(destino, f"{core.limpiar_nombre(titulo) or 'Muestras'} - hoja de contactos.pdf")
+        pdf = os.path.join(destino, t("hoja_archivo",
+                                      titulo=core.limpiar_nombre(titulo) or t("hoja_titulo_defecto")))
         paginas = hoja_contactos.crear(resultados, pdf, titulo, args.pagina)
         print(f"Hoja de contactos: {pdf} ({paginas} pag.)")
     for nombre, motivo in avisos:

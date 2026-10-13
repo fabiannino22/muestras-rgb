@@ -1,0 +1,44 @@
+name: "Reportar un problema / Report a problem"
+description: "Algo no funciona como esperabas / Something doesn't work as expected"
+labels: ["problema"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por reportarlo. No subas archivos de clientes: con una captura de la tabla de resultados suele bastar.
+        Thanks for reporting. Please don't upload client files — a screenshot of the results table is usually enough.
+  - type: textarea
+    id: que_paso
+    attributes:
+      label: "¿Qué pasó? / What happened?"
+      description: "Qué hiciste, qué esperabas y qué obtuviste / What you did, what you expected and what you got"
+    validations:
+      required: true
+  - type: textarea
+    id: captura
+    attributes:
+      label: "Captura de la ventana o del mensaje / Screenshot of the window or message"
+      description: "Arrastra la imagen aquí / Drag the image here"
+  - type: input
+    id: version
+    attributes:
+      label: "Versión / Version"
+      description: "Aparece en el título de la ventana / Shown in the window title (e.g. 0.4.0)"
+    validations:
+      required: true
+  - type: dropdown
+    id: sistema
+    attributes:
+      label: "Sistema / System"
+      options:
+        - Windows
+        - "macOS (Apple chip / chip Apple)"
+        - "macOS (Intel)"
+        - "Otro / Other"
+    validations:
+      required: true
+  - type: textarea
+    id: archivo
+    attributes:
+      label: "Sobre el archivo / About the file"
+      description: "Formato, modo de color, perfil, de qué programa salió / Format, color mode, profile, which app exported it"

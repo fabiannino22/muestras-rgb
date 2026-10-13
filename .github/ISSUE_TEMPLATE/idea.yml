@@ -1,0 +1,14 @@
+name: "Sugerir una idea / Suggest an idea"
+description: "Algo que te ahorraría tiempo / Something that would save you time"
+labels: ["idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: "¿Qué te gustaría que hiciera? / What would you like it to do?"
+    validations:
+      required: true
+  - type: textarea
+    id: hoy
+    attributes:
+      label: "¿Cómo lo resuelves hoy? / How do you handle it today?"

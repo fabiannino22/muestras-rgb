@@ -8,19 +8,25 @@ publicar. Se usa igual en local y en la GitHub Action (.github/workflows/empaque
     python empaquetar.py --version 0.2.0
 
 Sale en dist/:
-  Windows  MuestrasRGB-<version>-windows-x64.zip   (carpeta con MuestrasRGB.exe)
-  macOS    MuestrasRGB-<version>-macos-<arch>.zip   (Muestras RGB.app)
-  Linux    MuestrasRGB-<version>-linux-x64.zip      (solo para probar)
+  Windows  MuestrasRGB-windows-x64.zip     (carpeta con MuestrasRGB.exe)
+  macOS    MuestrasRGB-macos-<arch>.zip     (Muestras RGB.app)
+  Linux    MuestrasRGB-linux-x64.zip        (solo para probar)
+
+Los zip no llevan la version en el nombre para que el enlace
+.../releases/latest/download/MuestrasRGB-windows-x64.zip siempre baje la ultima.
+Cada paquete lleva LICENSE.txt, THIRD-PARTY-NOTICES.txt y licenses/.
 
 Se empaqueta en modo carpeta (--onedir), no en un solo .exe: arranca mas rapido y
 los antivirus lo marcan mucho menos como falso positivo.
 """
 import argparse
+import importlib.metadata
 import os
 import platform
 import shutil
 import subprocess
 import sys
+import sysconfig
 
 import PyInstaller.__main__
 
@@ -54,6 +60,27 @@ def podar_traducciones(carpeta):
                 os.remove(os.path.join(raiz, n))
 
 
+def copiar_licencias(destino):
+    """LICENSE (MIT), avisos de terceros y textos de licencia dentro del paquete."""
+    lic = os.path.join(destino, "licenses")
+    os.makedirs(lic, exist_ok=True)
+    shutil.copy(os.path.join(RAIZ, "LICENSE"), os.path.join(destino, "LICENSE.txt"))
+    origen = os.path.join(RAIZ, "recursos", "licencias")
+    for n in os.listdir(origen):
+        destino_n = destino if n == "THIRD-PARTY-NOTICES.txt" else lic
+        shutil.copy(os.path.join(origen, n), os.path.join(destino_n, n))
+    # Pillow: su LICENSE incluye las de libjpeg, libtiff, littlecms, FreeType...
+    pillow = [f for f in importlib.metadata.files("pillow") if f.name == "LICENSE"]
+    shutil.copy(pillow[0].locate(), os.path.join(lic, "Pillow.txt"))
+    for candidato in (os.path.join(sys.base_prefix, "LICENSE.txt"),
+                      os.path.join(sysconfig.get_paths()["stdlib"], "LICENSE.txt")):
+        if os.path.isfile(candidato):
+            shutil.copy(candidato, os.path.join(lic, "Python.txt"))
+            break
+    else:
+        raise SystemExit("No encontre la licencia de Python (LICENSE.txt)")
+
+
 def main():
     p = argparse.ArgumentParser(description="Empaqueta muestras-rgb con PyInstaller.")
     p.add_argument("--version", default=core.VERSION)
@@ -85,6 +112,8 @@ def main():
     PyInstaller.__main__.run(opciones)
 
     podar_traducciones(DIST)
+    copiar_licencias(os.path.join(DIST, f"{NOMBRE_MAC}.app", "Contents", "Resources") if mac
+                     else os.path.join(DIST, nombre))
 
     if mac:
         app = os.path.join(DIST, f"{NOMBRE_MAC}.app")
@@ -98,7 +127,7 @@ def main():
         # PyInstaller, y en Apple Silicon un binario sin firma valida no abre.
         subprocess.run(["codesign", "--force", "--deep", "--sign", "-", app], check=True)
 
-    zip_base = os.path.join(DIST, f"{NOMBRE}-{version}-{plataforma()}")
+    zip_base = os.path.join(DIST, f"{NOMBRE}-{plataforma()}")
     if mac:
         # ditto conserva los symlinks y atributos del .app; shutil.make_archive no.
         subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent",
