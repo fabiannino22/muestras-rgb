@@ -1,104 +1,92 @@
-# muestras-rgb
+<p align="center"><img src="recursos/icono.png" width="96" alt=""></p>
 
-Convierte los **JPG de impresión (CMYK)** de una carpeta de cliente en **muestras RGB
-reducidas** listas para mandar al cliente a aprobación final, dentro de una subcarpeta
-(`muestras/` por defecto). Usa el perfil ICC incrustado de cada pieza como origen, así
-que sirve con cualquier perfil de imprenta (FOGRA39, GRACoL, etc.), no solo con uno.
+# Muestras RGB
 
-Probado el 2026-09-26 con Python 3.14 y Pillow 12.3.0 en Windows, sobre 15 fondos de
-pared de impresión de un cliente (CMYK `Coated FOGRA39 (ISO 12647-2:2004)`,
-11221×5315 px @ 150 dpi): 15/15 muestras RGB correctas en 20 s, 7.1 MB en total.
+**Turn print-ready CMYK JPG/TIFF files into light, color-accurate RGB samples for client approval — in batches, without opening Photoshop.**
 
-## Qué hay aquí
+[Leer en español](README.es.md) · [User guide](docs/guide.md) · [Download](#download)
 
-| Archivo | Qué hace |
+![Muestras RGB](docs/img/app-en.png)
+
+Free and open source (MIT), by [Estudio Veintidós Lab](https://estudioveintidoslab.com) (e22lab). Interface in English and Spanish.
+
+## What it does
+
+Drop a folder of print files and get, in a few seconds:
+
+- **sRGB JPEG samples** sized by their longest side, at 72 dpi (or whatever you choose), light enough to email.
+- **Correct color:** each file is converted from **its own embedded ICC profile** (FOGRA39, GRACoL, SWOP…) with relative colorimetric intent and black point compensation — not with a naive conversion that turns everything greenish and dull.
+- **Honest warnings** instead of silent surprises:
+  - a CMYK file with **no embedded profile** is skipped (or converted with the profile you choose, and flagged);
+  - a TIFF with a **spot color** is converted and flagged, because the spot ink can't appear in an RGB sample.
+- **Renaming:** prefix, suffix, a new name for the whole batch, numbering, and what to do if a file already exists.
+- **Watermark** (text or your logo; centered, tiled or in a corner).
+- **Contact sheet PDF** with every sample, its name and its print size, ready to send to the client.
+
+![Contact sheet](docs/img/sheet-en.png)
+
+Your original files are never modified.
+
+## Download
+
+| System | File |
 |---|---|
-| `exportar_muestras_rgb.py` | Lee los `.jpg` de una carpeta, los reduce y los convierte a sRGB, y escribe las muestras en la subcarpeta de salida. Solo lectura sobre los originales. |
+| Windows 10/11 (64-bit) | [MuestrasRGB-windows-x64.zip](https://github.com/fabiannino22/muestras-rgb/releases/latest/download/MuestrasRGB-windows-x64.zip) |
+| Mac with Apple chip (M1 and later) | [MuestrasRGB-macos-arm64.zip](https://github.com/fabiannino22/muestras-rgb/releases/latest/download/MuestrasRGB-macos-arm64.zip) |
+| Mac with Intel processor | [MuestrasRGB-macos-x64.zip](https://github.com/fabiannino22/muestras-rgb/releases/latest/download/MuestrasRGB-macos-x64.zip) |
 
-## Cómo se usa
+Nothing to install: unzip and open. The app isn't code-signed yet, so the first time:
+
+- **Windows:** "Windows protected your PC" → *More info* → *Run anyway*.
+- **macOS:** open it once, close the warning, then go to *System Settings → Privacy & Security* and click *Open Anyway*. If macOS says the app "is damaged", run `xattr -dr com.apple.quarantine "/Applications/Muestras RGB.app"` in Terminal.
+
+The Mac versions are a **beta**: they're built and tested automatically, but haven't had much real-world use yet. Reports are welcome.
+
+## Quick start
+
+1. Drag your folder of print files onto the window (or click *Browse…*).
+2. Set the longest side, and optionally a prefix/suffix, watermark or contact sheet.
+3. Click **Convert**, then **Open output folder**.
+
+By default the samples go to a `samples` subfolder inside your input folder. See the [user guide](docs/guide.md) for every option and an FAQ.
+
+## Supported files
+
+| Input | Result |
+|---|---|
+| CMYK JPG/TIFF with an embedded profile (8 or 16-bit; uncompressed, LZW, ZIP or JPEG-compressed TIFF; layered TIFF) | Converted from its profile to sRGB |
+| TIFF with a spot color channel | Converted, with a note naming the spot color |
+| TIFF with a saved alpha channel | Converted (the alpha channel is ignored) |
+| CMYK with no embedded profile | Skipped with a note — or converted with a profile you choose |
+| RGB / grayscale with a profile (e.g. Adobe RGB) | Converted from its profile to sRGB |
+| RGB / grayscale with no profile | Assumed sRGB and resized |
+| Transparent images | Flattened on white |
+
+## Command line
+
+The same engine is available from the terminal (requires Python 3.10+):
 
 ```
-python exportar_muestras_rgb.py                              (sobre la carpeta actual)
-python exportar_muestras_rgb.py "G:\ruta\del\cliente"
-python exportar_muestras_rgb.py "G:\ruta" --lado 1600 --calidad 85 --dpi 72 --subcarpeta pruebas
+pip install -r requirements.txt
+python exportar_muestras_rgb.py "path/to/folder" --lado 2000 --idioma en --hoja-contactos "Fall catalog"
+python exportar_muestras_rgb.py --help
 ```
 
-| Opción | Default | Significado |
-|---|---|---|
-| `carpeta` (posicional) | `.` | Carpeta que contiene los JPG de impresión. |
-| `--subcarpeta` | `muestras` | Nombre de la subcarpeta de salida, dentro de `carpeta`. |
-| `--lado` | `2000` | Píxeles del lado **más largo** de la muestra (respeta la proporción). |
-| `--calidad` | `92` | Calidad JPEG. 92 ≈ 500-700 KB/pieza a 2000 px; 85 aligera para envío. |
-| `--dpi` | `72` | DPI escrito en los metadatos. No cambia los píxeles, solo la etiqueta. |
+## Run from source / build
 
-**Dependencia:** `pip install pillow` (littlecms ya viene dentro de Pillow).
+```
+pip install -r requirements.txt
+python muestras_gui.py                      # the app
+python -m unittest discover tests           # tests (uses the TIFF fixtures in fixtures/)
+pip install pyinstaller && python empaquetar.py   # build a package in dist/
+```
 
-Al terminar imprime una tabla de verificación (dimensiones, modo, dpi, peso y perfil
-de cada salida) y avisa de cualquier archivo que no procesó.
+Every push builds and smoke-tests the packaged app on Windows, macOS (Apple Silicon) and macOS (Intel) with GitHub Actions. Technical notes (color pipeline, verified gotchas, packaging and releases) are in [docs/tecnico.md](docs/tecnico.md) (Spanish).
 
-## Qué hace por dentro
+## Feedback
 
-1. Toma el **perfil ICC incrustado** de cada JPG como origen de color. No hay perfil
-   hardcodeado: cada pieza aporta el suyo.
-2. **Reduce primero** (LANCZOS al lado mayor pedido) y convierte el perfil después.
-   La conversión ICC es por píxel independiente, así que el color sale igual pero
-   ~30× más rápido que convertir los ~60 MP originales.
-3. Convierte a **sRGB** con littlecms, intento *Relative Colorimetric* + compensación
-   de punto negro.
-4. Guarda JPEG progresivo y optimizado con el perfil sRGB incrustado y el dpi pedido.
+Found a problem or have an idea? [Open an issue](https://github.com/fabiannino22/muestras-rgb/issues/new/choose) — a screenshot of the results table helps a lot.
 
-## Reglas de seguridad
+## License
 
-- **Nunca toca los originales:** solo escribe dentro de la subcarpeta de salida.
-- Un **CMYK sin perfil incrustado se salta con aviso**, porque sin origen no hay forma
-   honesta de convertir el color. Mejor un aviso que un color inventado.
-- Un JPG que ya es RGB se reconvierte desde su perfil a sRGB (o solo se reduce si no
-   trae perfil).
-
-## Gotchas de color verificados (no volver a descubrirlos)
-
-- El JPEG CMYK de Photoshop viene con `adobe_transform=2` (YCCK con canales invertidos).
-  Pillow lo decodifica bien solo: **no invertir los canales a mano**.
-- Con FOGRA39, *Relative Colorimetric* y *Perceptual* dan resultado **idéntico**
-  (diferencia media 0.0/255): la elección de intento no importa con este perfil.
-- `img.convert("RGB")` **sin ICC** sale visiblemente más verde y apagado. Nunca omitir
-  el perfil incrustado.
-- `Image.MAX_IMAGE_PIXELS = None` es obligatorio: las piezas de impresión (~60 MP)
-  superan el límite anti-"image bomb" de Pillow y sin eso abre con excepción.
-- **sRGB es el destino correcto para aprobar en pantalla.** Adobe RGB sin gestión de
-  color se ve saturado y engañoso en el monitor del cliente.
-- El **dpi de los metadatos no cambia los píxeles**: 2000 px son 2000 px en pantalla.
-  Solo afecta a cómo lo interpreta un programa que mida en cm/pulgadas.
-- Una muestra CMYK→RGB es una **simulación de cómo se verá impreso**, no el RGB
-  original del diseño. Si el cliente compara contra un PNG RGB anterior, notará
-  ligeras diferencias en los tonos más saturados: es el gamut de la imprenta, no un bug.
-
-## Dónde vive y por qué
-
-- El código vive aquí, en OneDrive, porque es una herramienta **transversal del
-  estudio**, no de un cliente: cualquier carpeta de impresión de cualquier cliente se
-  procesa apuntándola por argumento.
-- Las **muestras salen dentro de la carpeta del cliente** (subcarpeta `muestras/`),
-  porque son el entregable que se envía; no se acumulan aquí.
-
-## A futuro: Estudio Veintidós Lab / e22lab (apuntado 2026-09-26, sin fecha)
-
-La visión es convertir esto en una **herramienta gratuita de distribución pública**
-bajo el sello **Estudio Veintidós Lab** (`e22lab`, dominio
-`estudioveintidoslab.com`), para que cualquier diseñador que imprima se salte el
-tener que programar un lote de acciones en Photoshop o convertir a mano.
-
-Orden previsto (cada paso desbloquea el siguiente):
-
-1. **Repo versionado** (este): semilla y backup. Hoy privado/interno.
-2. **Ejecutable drag & drop** (PyInstaller + una GUI mínima): es el paso que de verdad
-   la vuelve usable para quien no abre una consola. Sin esto, la adopción externa es
-   cercana a cero.
-3. **Video demo + landing de e22lab**: rinden después del ejecutable, no antes; un
-   video de "suelta tu carpeta de CMYK, recibe tus muestras RGB" es lo que convierte.
-4. **Más repos de e22lab**: irán saliendo de `studio-lab` (QC de entregas, PSD→spec)
-   cuando cada uno tenga readme y ejemplo propios.
-
-**Mientras no exista el ejecutable, esto NO se publica:** queda privado como el resto
-de herramientas del estudio. Antes de cualquier publicación: licencia elegida (MIT si
-se mantiene gratuita), readme sin nombres de clientes, y cero rutas locales.
+MIT © Estudio Veintidós Lab (e22lab). The packages include third-party components (Qt/PySide6 under LGPL v3, Pillow, Python, the Inter typeface under OFL); see `THIRD-PARTY-NOTICES.txt` in the download.

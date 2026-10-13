@@ -1,0 +1,33 @@
+Muestras RGB — third-party software / software de terceros
+==========================================================
+
+Muestras RGB is free software under the MIT license (see LICENSE.txt).
+It is built with, and its packages include, the following components.
+Muestras RGB es software libre con licencia MIT (ver LICENSE.txt). Se construye
+con los siguientes componentes, que se incluyen en los paquetes.
+
+Qt 6 and PySide6 / Shiboken6 — The Qt Company Ltd.
+  License: GNU LGPL v3 (licenses/LGPL-3.0.txt, which builds on licenses/GPL-3.0.txt)
+  Source: https://code.qt.io/  ·  https://download.qt.io/official_releases/QtForPython/
+  The Qt and PySide6 libraries are shipped as separate, unmodified shared
+  libraries inside the package folder; you may replace them with compatible
+  versions of your own. Las bibliotecas de Qt y PySide6 van como bibliotecas
+  compartidas separadas y sin modificar; se pueden reemplazar por otras compatibles.
+
+Pillow — Jeffrey A. Clark and contributors (and the libraries it bundles:
+  libjpeg-turbo, libtiff, Little CMS, FreeType, zlib, libpng, libwebp and others)
+  License: MIT-CMU and the bundled libraries' licenses (licenses/Pillow.txt)
+  Source: https://github.com/python-pillow/Pillow
+
+Python — Python Software Foundation
+  License: PSF License Agreement (licenses/Python.txt)
+  Source: https://www.python.org/
+
+Inter typeface — The Inter Project Authors (Rasmus Andersson)
+  License: SIL Open Font License 1.1 (licenses/Inter-OFL-1.1.txt)
+  Source: https://github.com/rsms/inter
+
+PyInstaller bootloader — PyInstaller Development Team
+  License: GPL 2.0 with the PyInstaller bootloader exception, which allows
+  distributing the generated executables under any license.
+  Source: https://github.com/pyinstaller/pyinstaller

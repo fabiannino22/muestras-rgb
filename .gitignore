@@ -6,3 +6,10 @@ muestras/
 pruebas/
 *.jpg
 *.jpeg
+
+# Base intermedia de las fixtures (se regenera con fixtures/generar_base.py)
+fixtures/_base_cmyk.tif
+
+# Empaquetado (python empaquetar.py)
+build/
+dist/

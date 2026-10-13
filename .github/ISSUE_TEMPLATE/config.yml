@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Guía de uso"
+    url: https://github.com/fabiannino22/muestras-rgb/blob/main/docs/guia.md
+    about: "Cada opción explicada y preguntas frecuentes."
+  - name: "User guide"
+    url: https://github.com/fabiannino22/muestras-rgb/blob/main/docs/guide.md
+    about: "Every option explained, plus an FAQ."

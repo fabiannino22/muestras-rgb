@@ -1,0 +1,11 @@
+2000 pxx2000 px DocumentMode.CMYK BitsPerChannelType.EIGHT perfil=Coated FOGRA39 (ISO 12647-2:2004) capas=3
+OK    08bit_capas_lzw.tif
+OK    08bit_lzw.tif
+OK    08bit_zip.tif
+OK    08bit_jpeg.tif
+OK    08bit_sinperfil_lzw.tif
+OK    08bit_gracol2006_lzw.tif
+OK    16bit_lzw.tif
+OK    08bit_alfa_lzw.tif
+OK    08bit_tintadirecta_lzw.tif
+FIN
