@@ -10,7 +10,9 @@ import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from PySide6.QtCore import QObject, QSettings, Qt, QThread, QUrl, Signal
+from PySide6.QtCore import (
+    QLibraryInfo, QLocale, QObject, QSettings, Qt, QThread, QTranslator, QUrl, Signal,
+)
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
@@ -55,7 +57,7 @@ class Trabajador(QObject):
 class Ventana(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Muestras RGB · e22lab")
+        self.setWindowTitle(f"Muestras RGB {core.VERSION} · e22lab")
         self.setAcceptDrops(True)
         self.ajustes = QSettings(ORG, APP)
         self.archivos = []
@@ -74,7 +76,7 @@ class Ventana(QMainWindow):
         self.ed_entrada.setPlaceholderText("Arrastra aquí una carpeta con JPG/TIFF de impresión")
         self.ed_entrada.editingFinished.connect(self.cargar_entrada)
         self.ed_salida = QLineEdit()
-        self.ed_salida.textEdited.connect(lambda _: setattr(self, "salida_manual", True))
+        self.ed_salida.textEdited.connect(self.marcar_salida_manual)
         self.chk_sub = QCheckBox("Incluir subcarpetas")
         self.chk_sub.toggled.connect(self.cargar_entrada)
         fc.addRow("Entrada:", self._con_boton(self.ed_entrada, self.elegir_entrada))
@@ -214,6 +216,11 @@ class Ventana(QMainWindow):
         if d:
             self.ed_entrada.setText(d)
             self.cargar_entrada()
+
+    def marcar_salida_manual(self, _texto):
+        # Metodo y no lambda: una lambda que captura self hace que PySide6 truene
+        # (segfault) al destruir la ventana.
+        self.salida_manual = True
 
     def elegir_salida(self):
         d = QFileDialog.getExistingDirectory(self, "Carpeta donde guardar las muestras",
@@ -358,10 +365,41 @@ class Ventana(QMainWindow):
             QDesktopServices.openUrl(QUrl.fromLocalFile(d))
 
 
+def autoprueba(entrada, salida):
+    """
+    Prueba de humo del ejecutable empaquetado (la usa la GitHub Action): crea la
+    ventana sin mostrarla y convierte `entrada` en `salida` con varios procesos,
+    que es lo que suele romperse al congelar con PyInstaller. Escribe un reporte
+    en salida/autoprueba.txt y devuelve 0 si nada termino en error.
+    """
+    Ventana()
+    archivos = core.listar_archivos(entrada)
+    opciones = core.Opciones(lado=500, si_existe="sobrescribir")
+    plan = core.planear_salidas(archivos, salida, opciones)
+    with ProcessPoolExecutor(max_workers=2) as ex:
+        resultados = list(ex.map(core.procesar, archivos, plan, [opciones] * len(archivos)))
+    os.makedirs(salida, exist_ok=True)
+    with open(os.path.join(salida, "autoprueba.txt"), "w", encoding="utf-8") as f:
+        f.write(f"muestras-rgb {core.VERSION}\n")
+        for r in resultados:
+            f.write(f"{r.estado}\t{os.path.basename(r.origen)}\t{r.motivo}\n")
+    convertidos = sum(r.estado in ("ok", "aviso") for r in resultados)
+    errores = sum(r.estado == "error" for r in resultados)
+    return 0 if convertidos and not errores else 1
+
+
 def main():
     app = QApplication(sys.argv)
     app.setOrganizationName(ORG)
     app.setApplicationName(APP)
+    # Botones de los dialogos estandar (Si/No, Cancelar, selector de carpetas) en el
+    # idioma del sistema.
+    traductor = QTranslator(app)
+    if traductor.load(QLocale.system(), "qtbase", "_",
+                      QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):
+        app.installTranslator(traductor)
+    if len(sys.argv) == 4 and sys.argv[1] == "--autoprueba":
+        sys.exit(autoprueba(sys.argv[2], sys.argv[3]))
     v = Ventana()
     v.show()
     sys.exit(app.exec())

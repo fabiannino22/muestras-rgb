@@ -40,6 +40,30 @@ python muestras_gui.py
 - Convierte en varios procesos a la vez (hasta 4) sin congelar la ventana, y se puede
   cancelar. Recuerda los ajustes entre sesiones.
 
+## Ejecutables (Windows y macOS)
+
+La GitHub Action `.github/workflows/empaquetar.yml` corre las pruebas, empaqueta con
+PyInstaller y **ejecuta el programa ya empaquetado** sobre las fixtures
+(`--autoprueba`) en Windows, Mac Apple Silicon y Mac Intel. Los `.zip` quedan como
+artefactos de cada run.
+
+Para publicar una versión:
+
+1. Sube `VERSION` en `muestras_core.py` (p. ej. `0.2.0`) y haz commit.
+2. `git tag v0.2.0 && git push origin v0.2.0`
+3. La Action crea un **release en borrador** con los tres `.zip`; revísalo y publícalo
+   desde GitHub. Si la etiqueta no coincide con `VERSION`, falla a propósito.
+
+En local: `pip install -r requirements.txt pyinstaller` y `python empaquetar.py`
+(sale en `dist/`). Se usa `PySide6-Essentials` y no `PySide6` completo para no meter
+WebEngine, QML y compañía al paquete.
+
+**Mientras no estén firmados** (ver la sección de e22lab), quien lo descargue verá:
+
+- **Windows:** "Windows protegió tu PC" → *Más información* → *Ejecutar de todas formas*.
+- **macOS:** "no se puede abrir porque Apple no puede comprobar…" → *Ajustes del Sistema*
+  → *Privacidad y seguridad* → *Abrir de todos modos* (solo la primera vez).
+
 ## Consola
 
 ```
