@@ -25,7 +25,7 @@ from PIL import Image, ImageCms
 # Las piezas de impresion superan el limite anti-"image bomb" de Pillow.
 Image.MAX_IMAGE_PIXELS = None
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 EXTENSIONES = (".jpg", ".jpeg", ".tif", ".tiff")
 
