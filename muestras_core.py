@@ -13,9 +13,11 @@ Flujo por archivo (ver README para el porque de cada paso):
 
 Los originales NO se tocan: solo se escribe en la carpeta de salida.
 """
+import functools
 import os
 import re
 import struct
+import sys
 from dataclasses import dataclass
 
 from PIL import Image, ImageCms
@@ -47,6 +49,7 @@ class Opciones:
     digitos: int = 3
     inicio: int = 1
     si_existe: str = "numerar"
+    perfil_cmyk: str = ""       # .icc a asumir en CMYK sin perfil; vacio = saltarlos
 
 
 @dataclass
@@ -117,6 +120,52 @@ def planear_salidas(archivos, destino, opciones):
         usados.add(salida.lower())
         plan.append(salida)
     return plan
+
+
+# Donde suelen vivir los perfiles ICC (Adobe instala los suyos en las de Adobe).
+def _carpetas_perfiles():
+    if sys.platform == "win32":
+        windir = os.environ.get("WINDIR", r"C:\Windows")
+        comunes = os.environ.get("COMMONPROGRAMFILES", r"C:\Program Files\Common Files")
+        return [os.path.join(windir, "System32", "spool", "drivers", "color"),
+                os.path.join(comunes, "Adobe", "Color", "Profiles")]
+    if sys.platform == "darwin":
+        return ["/Library/Application Support/Adobe/Color/Profiles",
+                "/Library/ColorSync/Profiles",
+                os.path.expanduser("~/Library/ColorSync/Profiles"),
+                "/System/Library/ColorSync/Profiles"]
+    return ["/usr/share/color/icc", "/usr/local/share/color/icc",
+            os.path.expanduser("~/.local/share/icc"), os.path.expanduser("~/.color/icc")]
+
+
+def es_perfil_cmyk(ruta):
+    """True si el .icc/.icm describe un espacio CMYK (bytes 16-19 de la cabecera)."""
+    try:
+        with open(ruta, "rb") as f:
+            cabecera = f.read(40)
+        return len(cabecera) == 40 and cabecera[36:40] == b"acsp" and cabecera[16:20] == b"CMYK"
+    except OSError:
+        return False
+
+
+def buscar_perfiles_cmyk(carpetas=None):
+    """[(descripcion, ruta)] de los perfiles CMYK instalados, sin repetir descripcion."""
+    vistos = {}
+    for carpeta in carpetas or _carpetas_perfiles():
+        for raiz, _, nombres in os.walk(carpeta):
+            for n in nombres:
+                ruta = os.path.join(raiz, n)
+                if n.lower().endswith((".icc", ".icm")) and es_perfil_cmyk(ruta):
+                    with open(ruta, "rb") as f:
+                        desc = descripcion_perfil(f.read())
+                    vistos.setdefault(desc, ruta)
+    return sorted(vistos.items(), key=lambda par: par[0].lower())
+
+
+@functools.lru_cache(maxsize=4)
+def leer_perfil(ruta):
+    with open(ruta, "rb") as f:
+        return f.read()
 
 
 def descripcion_perfil(icc):
@@ -227,13 +276,19 @@ def procesar(ruta, salida, opciones):
                     r.motivo += " (gris de 16/32 bits: guárdalo en 8 bits)"
                 return r
             if img.mode == "CMYK" and not icc:
-                r.estado = "saltado"
-                r.motivo = "CMYK sin perfil incrustado: no se adivina el origen"
-                return r
+                if not opciones.perfil_cmyk:
+                    r.estado = "saltado"
+                    r.motivo = "CMYK sin perfil incrustado: no se adivina el origen"
+                    return r
+                # Lo mismo que hace Photoshop con su espacio de trabajo CMYK, pero a la vista.
+                icc = leer_perfil(opciones.perfil_cmyk)
+                r.perfil_origen = descripcion_perfil(icc) + " (asumido)"
+                r.estado = "aviso"
+                r.motivo = f"sin perfil incrustado: se asumió «{descripcion_perfil(icc)}»"
             directas = tintas_directas(img)
             if directas:
                 r.estado = "aviso"
-                r.motivo = ("la muestra no incluye la tinta directa "
+                r.motivo = (r.motivo + "; " if r.motivo else "") + ("la muestra no incluye la tinta directa "
                             + ", ".join(f"«{n}»" for n in directas) + " (solo CMYK)")
             img.thumbnail((opciones.lado, opciones.lado), Image.LANCZOS)
             img.info["icc_profile"] = icc

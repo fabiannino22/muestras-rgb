@@ -33,6 +33,9 @@ python muestras_gui.py
   carpeta de salida nunca se reprocesan.
 - **Salida:** por defecto `<entrada>/muestras`; se puede elegir cualquier otra.
 - **Muestra:** lado más largo (no agranda imágenes más chicas), dpi y calidad JPEG.
+- **CMYK sin perfil:** saltarlos (default) o asumir un perfil. La lista trae los perfiles
+  CMYK instalados en la máquina (con Adobe instalado aparecen SWOP, FOGRA39, GRACoL…) y
+  permite elegir cualquier `.icc`. La muestra queda marcada con aviso y el perfil asumido.
 - **Nombre:** prefijo, sufijo, nombre nuevo para todo el lote (se numera solo),
   numeración opcional (dígitos y número inicial) y qué hacer si ya existe
   (agregar `(2)`, sobrescribir con confirmación, o saltar). Muestra un ejemplo del
@@ -83,6 +86,7 @@ python exportar_muestras_rgb.py "G:\ruta" --salida "D:\envios" --prefijo e22_ --
 | `--dpi` | `72` | DPI escrito en los metadatos. No cambia los píxeles, solo la etiqueta. |
 | `--prefijo` / `--sufijo` | — | Texto antes / después del nombre original. |
 | `--si-existe` | `numerar` | `numerar` (agrega ` (2)`), `sobrescribir` o `saltar`. |
+| `--perfil-cmyk` | — | `.icc` a asumir en los CMYK sin perfil (si no se da, se saltan). |
 
 Al terminar imprime una tabla de verificación (dimensiones, peso y perfil de origen
 de cada salida) y avisa de cualquier archivo que no procesó.
@@ -99,7 +103,7 @@ Verificado con las variantes de TIFF exportadas desde Photoshop en `fixtures/tif
 | TIFF con capas | Se usa el compuesto aplanado que Photoshop guarda junto a las capas. |
 | TIFF con canal alfa guardado | Se ignora el alfa (no es tinta). |
 | TIFF con **tinta directa** | Se convierte **con aviso**: la muestra solo lleva CMYK y no incluye la tinta directa (se nombra en el aviso). |
-| CMYK sin perfil | **Se salta con aviso.** |
+| CMYK sin perfil | **Se salta con aviso**, o se convierte con aviso asumiendo el perfil que elijas (ver abajo). |
 | RGB con perfil (p. ej. Adobe RGB) | Se convierte desde su perfil a sRGB. |
 | RGB sin perfil | Se asume sRGB y solo se reduce. |
 | Escala de grises 8 bits (con o sin perfil) | Igual que RGB. |
@@ -124,7 +128,14 @@ Verificado con las variantes de TIFF exportadas desde Photoshop en `fixtures/tif
   CMYK y descarta los extra. Para no perderla en silencio se lee el recurso DisplayInfo
   (`0x0435`) que Photoshop guarda en el TIFF, que distingue alfa (tipo 0/1) de tinta
   directa (tipo 2), y se avisa con su nombre.
-- Un **CMYK sin perfil incrustado se salta con aviso**, porque sin origen no hay forma
+- **Photoshop no tiene un perfil fijo para CMYK sin perfil:** usa el espacio de trabajo
+  CMYK de *Ajustes de color*, que depende de la región de instalación (Norteamérica:
+  U.S. Web Coated SWOP v2; Europa: Coated FOGRA39; Japón: Japan Color 2001 Coated). Por
+  eso aquí no se asume ninguno en silencio: o se salta, o se asume el que elija el
+  usuario y la muestra lo dice. La app no trae perfiles de Adobe: los toma de los
+  instalados en el sistema (`Common Files/Adobe/Color/Profiles` en Windows,
+  `/Library/Application Support/Adobe/Color/Profiles` en Mac, ColorSync, etc.).
+- Un **CMYK sin perfil incrustado se salta con aviso** si no se eligió perfil a asumir, porque sin origen no hay forma
    honesta de convertir el color. Mejor un aviso que un color inventado.
 - Un archivo que ya es RGB se reconvierte desde su perfil a sRGB (o solo se reduce si no
    trae perfil).

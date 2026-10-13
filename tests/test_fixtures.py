@@ -75,5 +75,45 @@ class TestFixturesTiff(unittest.TestCase):
                     self.assertLess(max(dif), tolerancia)
 
 
+class TestCmykSinPerfil(unittest.TestCase):
+    """Asumir FOGRA39 para 08bit_sinperfil_lzw debe dar lo mismo que 08bit_lzw (mismos pixeles)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        with Image.open(os.path.join(FIXTURES, "08bit_lzw.tif")) as im:
+            cls.fogra = os.path.join(cls.tmp.name, "perfiles", "fogra39.icc")
+            os.makedirs(os.path.dirname(cls.fogra))
+            with open(cls.fogra, "wb") as f:
+                f.write(im.info["icc_profile"])
+        with open(os.path.join(cls.tmp.name, "perfiles", "srgb.icc"), "wb") as f:
+            f.write(core.SRGB_BYTES)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def _procesar(self, nombre, perfil):
+        salida = os.path.join(self.tmp.name, nombre + ".jpg")
+        opciones = core.Opciones(lado=500, perfil_cmyk=perfil)
+        return core.procesar(os.path.join(FIXTURES, nombre + ".tif"), salida, opciones)
+
+    def test_sin_opcion_se_salta(self):
+        self.assertEqual(self._procesar("08bit_sinperfil_lzw", "").estado, "saltado")
+
+    def test_perfil_asumido(self):
+        r = self._procesar("08bit_sinperfil_lzw", self.fogra)
+        self.assertEqual(r.estado, "aviso")
+        self.assertIn("se asumió «Coated FOGRA39", r.motivo)
+        ref = self._procesar("08bit_lzw", self.fogra)
+        self.assertEqual(ref.estado, "ok")      # el perfil incrustado manda sobre el asumido
+        with Image.open(r.salida) as a, Image.open(ref.salida) as b:
+            self.assertEqual(max(ImageStat.Stat(ImageChops.difference(a, b)).mean), 0)
+
+    def test_buscar_perfiles_cmyk(self):
+        encontrados = core.buscar_perfiles_cmyk([os.path.dirname(self.fogra)])
+        self.assertEqual([d for d, _ in encontrados], ["Coated FOGRA39 (ISO 12647-2:2004)"])
+
+
 if __name__ == "__main__":
     unittest.main()

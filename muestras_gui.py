@@ -26,6 +26,7 @@ import muestras_core as core
 APP = "muestras-rgb"
 ORG = "e22lab"
 COL_ARCHIVO, COL_SALIDA, COL_TAMANO, COL_PESO, COL_PERFIL, COL_ESTADO = range(6)
+ELEGIR_ICC = "<elegir>"
 TEXTO_SI_EXISTE = {"numerar": "Agregar (2), (3)…", "sobrescribir": "Sobrescribir",
                    "saltar": "Saltar"}
 
@@ -94,6 +95,17 @@ class Ventana(QMainWindow):
         ft.addRow("Lado más largo:", self.sp_lado)
         ft.addRow("Resolución:", self.sp_dpi)
         ft.addRow("Calidad JPEG:", self.sp_calidad)
+        self.cb_perfil = QComboBox()
+        self.cb_perfil.setToolTip(
+            "Qué hacer con un CMYK que no trae perfil incrustado. Photoshop usa su espacio\n"
+            "de trabajo CMYK (en Norteamérica suele ser U.S. Web Coated SWOP v2; en Europa,\n"
+            "Coated FOGRA39). Si asumes uno, la muestra queda marcada con aviso.")
+        self.cb_perfil.addItem("Saltarlos (recomendado)", "")
+        for desc, ruta in core.buscar_perfiles_cmyk():
+            self.cb_perfil.addItem(f"Asumir {desc}", ruta)
+        self.cb_perfil.addItem("Elegir archivo .icc…", ELEGIR_ICC)
+        self.cb_perfil.activated.connect(self.al_elegir_perfil)
+        ft.addRow("CMYK sin perfil:", self.cb_perfil)
 
         # --- Nombre ---------------------------------------------------------
         nombre = QGroupBox("Nombre de salida")
@@ -193,12 +205,14 @@ class Ventana(QMainWindow):
         self.chk_numerar.setChecked(a.value("numerar", False, type=bool))
         self.sp_digitos.setValue(int(a.value("digitos", 3)))
         self.cb_existe.setCurrentIndex(max(0, self.cb_existe.findData(a.value("si_existe", "numerar"))))
+        self.poner_perfil(a.value("perfil_cmyk", ""))
 
     def guardar_ajustes(self):
         a = self.ajustes
         o = self.opciones()
         a.setValue("entrada", self.ed_entrada.text())
-        for clave in ("lado", "dpi", "calidad", "prefijo", "sufijo", "numerar", "digitos", "si_existe"):
+        for clave in ("lado", "dpi", "calidad", "prefijo", "sufijo", "numerar", "digitos", "si_existe",
+                      "perfil_cmyk"):
             a.setValue(clave, getattr(o, clave))
 
     def closeEvent(self, ev):
@@ -271,7 +285,30 @@ class Ventana(QMainWindow):
             prefijo=self.ed_prefijo.text(), sufijo=self.ed_sufijo.text(),
             nombre_nuevo=self.ed_nuevo.text(), numerar=self.chk_numerar.isChecked(),
             digitos=self.sp_digitos.value(), inicio=self.sp_inicio.value(),
-            si_existe=self.cb_existe.currentData())
+            si_existe=self.cb_existe.currentData(), perfil_cmyk=self.cb_perfil.currentData())
+
+    # --- perfil para CMYK sin perfil --------------------------------------------
+    def poner_perfil(self, ruta):
+        """Selecciona `ruta` en la lista (agregandola si no estaba); vacia = saltar."""
+        if not ruta or not os.path.isfile(ruta) or not core.es_perfil_cmyk(ruta):
+            self.cb_perfil.setCurrentIndex(0)
+            return
+        i = self.cb_perfil.findData(ruta)
+        if i < 0:
+            desc = core.descripcion_perfil(core.leer_perfil(ruta))
+            i = self.cb_perfil.count() - 1          # antes de "Elegir archivo…"
+            self.cb_perfil.insertItem(i, f"Asumir {desc}", ruta)
+        self.cb_perfil.setCurrentIndex(i)
+
+    def al_elegir_perfil(self, _indice):
+        if self.cb_perfil.currentData() != ELEGIR_ICC:
+            return
+        ruta, _ = QFileDialog.getOpenFileName(self, "Perfil CMYK a asumir", "",
+                                              "Perfiles ICC (*.icc *.icm)")
+        if ruta and not core.es_perfil_cmyk(ruta):
+            QMessageBox.warning(self, APP, "Ese archivo no es un perfil ICC CMYK.")
+            ruta = ""
+        self.poner_perfil(ruta)
 
     def actualizar_nombres(self):
         if self.trabajador:

@@ -36,6 +36,8 @@ def parse_args():
                    help="DPI escrito en los metadatos (default: 72)")
     p.add_argument("--prefijo", default="", help="Texto antes del nombre de cada muestra")
     p.add_argument("--sufijo", default="", help="Texto despues del nombre de cada muestra")
+    p.add_argument("--perfil-cmyk", default="",
+                   help="Perfil .icc a asumir en los CMYK sin perfil incrustado (default: saltarlos)")
     p.add_argument("--si-existe", choices=core.SI_EXISTE, default="numerar",
                    help="Si la muestra ya existe: numerar (default), sobrescribir o saltar")
     return p.parse_args()
@@ -46,8 +48,11 @@ def main():
     carpeta = os.path.abspath(args.carpeta)
     destino = os.path.abspath(args.salida) if args.salida else os.path.join(carpeta, args.subcarpeta)
     opciones = core.Opciones(lado=args.lado, calidad=args.calidad, dpi=args.dpi,
-                             prefijo=args.prefijo, sufijo=args.sufijo, si_existe=args.si_existe)
+                             prefijo=args.prefijo, sufijo=args.sufijo, si_existe=args.si_existe,
+                             perfil_cmyk=args.perfil_cmyk)
 
+    if args.perfil_cmyk and not core.es_perfil_cmyk(args.perfil_cmyk):
+        raise SystemExit(f"--perfil-cmyk: {args.perfil_cmyk} no es un perfil ICC CMYK")
     archivos = core.listar_archivos(carpeta)
     plan = core.planear_salidas(archivos, destino, opciones)
     print(f"{len(archivos)} JPG/TIFF en {carpeta}")
