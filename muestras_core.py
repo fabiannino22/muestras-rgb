@@ -15,6 +15,7 @@ Los originales NO se tocan: solo se escribe en la carpeta de salida.
 """
 import os
 import re
+import struct
 from dataclasses import dataclass
 
 from PIL import Image, ImageCms
@@ -50,7 +51,7 @@ class Opciones:
 class Resultado:
     origen: str
     salida: str = ""
-    estado: str = "ok"          # ok | saltado | error
+    estado: str = "ok"          # ok | aviso (convertido, pero leer motivo) | saltado | error
     motivo: str = ""
     modo_origen: str = ""
     perfil_origen: str = ""
@@ -158,6 +159,53 @@ def a_rgb(img):
 
 MODOS_SOPORTADOS = ("CMYK", "RGB", "RGBA", "L", "LA")
 
+TAG_PHOTOSHOP = 34377      # recursos de imagen de Photoshop dentro del TIFF
+
+
+def _recursos_photoshop(datos):
+    """Bloques '8BIM' de Photoshop -> {id: bytes}."""
+    recursos, i = {}, 0
+    while i + 12 <= len(datos) and datos[i:i + 4] == b"8BIM":
+        rid = struct.unpack(">H", datos[i + 4:i + 6])[0]
+        j = i + 6 + 1 + datos[i + 6]          # nombre Pascal...
+        j += (j - i) % 2                      # ...rellenado a par
+        largo = struct.unpack(">I", datos[j:j + 4])[0]
+        recursos[rid] = datos[j + 4:j + 4 + largo]
+        i = j + 4 + largo + largo % 2
+    return recursos
+
+
+def tintas_directas(img):
+    """
+    Nombres de las tintas directas de un TIFF de Photoshop. Pillow lee solo los 4
+    canales CMYK y descarta los extra sin avisar; por etiquetas TIFF un alfa y una
+    tinta directa son indistinguibles, pero el recurso DisplayInfo (0x0435) de
+    Photoshop marca cada canal extra como alfa (0/1) o tinta directa (2).
+    """
+    try:
+        datos = img.tag_v2.get(TAG_PHOTOSHOP) if img.format == "TIFF" else None
+        if not datos:
+            return []
+        r = _recursos_photoshop(bytes(datos))
+        info = r.get(0x0435, b"")[4:]          # salta la version
+        tipos = [info[k + 12] for k in range(0, len(info) - 12, 13)]
+        if 0x0415 in r:                        # nombres Unicode
+            nombres = r[0x0415]
+            lista, i = [], 0
+            while i + 4 <= len(nombres):
+                n = struct.unpack(">I", nombres[i:i + 4])[0]
+                lista.append(nombres[i + 4:i + 4 + 2 * n].decode("utf-16-be").rstrip("\x00"))
+                i += 4 + 2 * n
+        else:                                  # nombres Pascal
+            pas, lista, i = r.get(0x03EE, b""), [], 0
+            while i < len(pas):
+                lista.append(pas[i + 1:i + 1 + pas[i]].decode("latin-1"))
+                i += 1 + pas[i]
+        return [lista[k] if k < len(lista) else f"canal {k + 1}"
+                for k, tipo in enumerate(tipos) if tipo == 2]
+    except Exception:
+        return []
+
 
 def procesar(ruta, salida, opciones):
     """Convierte un archivo. Nunca lanza excepcion: el error queda en el Resultado."""
@@ -174,12 +222,17 @@ def procesar(ruta, salida, opciones):
                 r.estado = "saltado"
                 r.motivo = f"modo {img.mode} no soportado"
                 if img.mode.startswith("I;16") or img.mode in ("I", "F"):
-                    r.motivo += " (16/32 bits: guardalo en 8 bits)"
+                    r.motivo += " (gris de 16/32 bits: guárdalo en 8 bits)"
                 return r
             if img.mode == "CMYK" and not icc:
                 r.estado = "saltado"
                 r.motivo = "CMYK sin perfil incrustado: no se adivina el origen"
                 return r
+            directas = tintas_directas(img)
+            if directas:
+                r.estado = "aviso"
+                r.motivo = ("la muestra no incluye la tinta directa "
+                            + ", ".join(f"«{n}»" for n in directas) + " (solo CMYK)")
             img.thumbnail((opciones.lado, opciones.lado), Image.LANCZOS)
             img.info["icc_profile"] = icc
             rgb = a_rgb(img)

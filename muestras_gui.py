@@ -324,19 +324,20 @@ class Ventana(QMainWindow):
         self.hilo.start()
 
     def al_avanzar(self, fila, r):
-        estado = {"ok": "✔ listo", "saltado": "⚠ saltado", "error": "✖ error"}[r.estado]
+        estado = {"ok": "✔ listo", "aviso": "✔ listo, ojo", "saltado": "⚠ saltado",
+                  "error": "✖ error"}[r.estado]
         if r.motivo:
             estado += f": {r.motivo}"
         self.tabla.item(fila, COL_ESTADO).setText(estado)
         self.tabla.item(fila, COL_ESTADO).setToolTip(estado)
         self.tabla.item(fila, COL_PERFIL).setText(
             f"{r.modo_origen} · {r.perfil_origen}" if r.modo_origen else "")
-        if r.estado == "ok":
+        if r.estado in ("ok", "aviso"):
             self.ok += 1
             self.peso += r.peso
             self.tabla.item(fila, COL_TAMANO).setText(f"{r.ancho}×{r.alto}")
             self.tabla.item(fila, COL_PESO).setText(f"{r.peso/1024:.0f} KB")
-        else:
+        if r.estado != "ok":
             self.saltados += 1
         self.barra.setValue(self.barra.value() + 1)
         self.lb_resumen.setText(f"{self.ok} listos · {self.saltados} con aviso · "

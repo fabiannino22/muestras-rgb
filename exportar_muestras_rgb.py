@@ -57,19 +57,24 @@ def main():
 
     total = 0
     saltados = []
+    avisos = []
     t0 = time.time()
     for ruta, salida in zip(archivos, plan):
         r = core.procesar(ruta, salida, opciones)
         nombre = os.path.basename(ruta)
-        if r.estado != "ok":
+        if r.estado in ("saltado", "error"):
             saltados.append((nombre, r.motivo))
             continue
+        if r.estado == "aviso":
+            avisos.append((nombre, r.motivo))
         total += r.peso
         print(f"{nombre:<28}{f'{r.ancho}x{r.alto}':>12}  {r.peso/1024:>7.0f}KB  {r.perfil_origen}")
 
     print("-" * 100)
     print(f"Total: {total/1024/1024:.1f} MB en {len(archivos)-len(saltados)} archivos, "
           f"{time.time()-t0:.0f}s")
+    for nombre, motivo in avisos:
+        print(f"OJO: {nombre}: {motivo}")
     for nombre, motivo in saltados:
         print(f"AVISO: {nombre} no se proceso ({motivo})")
 

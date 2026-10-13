@@ -65,15 +65,22 @@ de cada salida) y avisa de cualquier archivo que no procesó.
 
 ## Formatos de entrada
 
+Verificado con las variantes de TIFF exportadas desde Photoshop en `fixtures/tiff/`
+(ver `fixtures/README.md`). `python -m unittest discover tests` lo comprueba.
+
 | Entrada | Qué pasa |
 |---|---|
-| CMYK 8 bits con perfil (JPG o TIFF sin comprimir/LZW/ZIP) | Se convierte desde su perfil a sRGB. |
+| CMYK 8 bits con perfil: JPG, o TIFF sin comprimir / LZW / ZIP / JPEG | Se convierte desde su perfil a sRGB (FOGRA39, GRACoL, etc.). |
+| CMYK 16 bits con perfil | Se convierte; Pillow lo lee reducido a 8 bits (mismo resultado que el de 8). |
+| TIFF con capas | Se usa el compuesto aplanado que Photoshop guarda junto a las capas. |
+| TIFF con canal alfa guardado | Se ignora el alfa (no es tinta). |
+| TIFF con **tinta directa** | Se convierte **con aviso**: la muestra solo lleva CMYK y no incluye la tinta directa (se nombra en el aviso). |
 | CMYK sin perfil | **Se salta con aviso.** |
 | RGB con perfil (p. ej. Adobe RGB) | Se convierte desde su perfil a sRGB. |
 | RGB sin perfil | Se asume sRGB y solo se reduce. |
-| Escala de grises (con o sin perfil) | Igual que RGB. |
+| Escala de grises 8 bits (con o sin perfil) | Igual que RGB. |
 | Con transparencia (RGBA) | Se aplana sobre blanco. |
-| 16 bits por canal | **Se salta con aviso** (pendiente: probar con TIFF reales). |
+| Gris de 16 bits, archivos dañados | Se saltan con aviso. |
 
 ## Qué hace por dentro
 
@@ -89,6 +96,10 @@ de cada salida) y avisa de cualquier archivo que no procesó.
 ## Reglas de seguridad
 
 - **Nunca toca los originales:** solo escribe dentro de la carpeta de salida.
+- Una **tinta directa no se puede simular** en la muestra: Pillow lee solo los 4 canales
+  CMYK y descarta los extra. Para no perderla en silencio se lee el recurso DisplayInfo
+  (`0x0435`) que Photoshop guarda en el TIFF, que distingue alfa (tipo 0/1) de tinta
+  directa (tipo 2), y se avisa con su nombre.
 - Un **CMYK sin perfil incrustado se salta con aviso**, porque sin origen no hay forma
    honesta de convertir el color. Mejor un aviso que un color inventado.
 - Un archivo que ya es RGB se reconvierte desde su perfil a sRGB (o solo se reduce si no
