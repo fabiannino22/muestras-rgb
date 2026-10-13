@@ -1,6 +1,6 @@
 # muestras-rgb
 
-Convierte los **JPG de impresión (CMYK)** de una carpeta de cliente en **muestras RGB
+Convierte los **JPG/TIFF de impresión (CMYK)** de una carpeta de cliente en **muestras RGB
 reducidas** listas para mandar al cliente a aprobación final, dentro de una subcarpeta
 (`muestras/` por defecto). Usa el perfil ICC incrustado de cada pieza como origen, así
 que sirve con cualquier perfil de imprenta (FOGRA39, GRACoL, etc.), no solo con uno.
@@ -13,32 +13,71 @@ pared de impresión de un cliente (CMYK `Coated FOGRA39 (ISO 12647-2:2004)`,
 
 | Archivo | Qué hace |
 |---|---|
-| `exportar_muestras_rgb.py` | Lee los `.jpg` de una carpeta, los reduce y los convierte a sRGB, y escribe las muestras en la subcarpeta de salida. Solo lectura sobre los originales. |
+| `muestras_gui.py` | **Interfaz gráfica** (prototipo): elige o arrastra la carpeta de entrada, la de salida, tamaño, dpi, calidad, prefijo/sufijo/renombrado y convierte el lote en paralelo con tabla de verificación. |
+| `exportar_muestras_rgb.py` | La misma conversión desde consola. |
+| `muestras_core.py` | La lógica de color y de nombres que comparten las dos. Solo lectura sobre los originales. |
 
-## Cómo se usa
+![Interfaz gráfica](docs/captura.png)
+
+**Dependencias:** `pip install -r requirements.txt` (Pillow + PySide6; littlecms ya viene
+dentro de Pillow). La versión de consola solo necesita Pillow.
+
+## Interfaz gráfica
+
+```
+python muestras_gui.py
+```
+
+- **Entrada:** carpeta con `.jpg`, `.jpeg`, `.tif` o `.tiff` (se puede arrastrar a la
+  ventana). Opcionalmente incluye subcarpetas. Las muestras que ya están dentro de la
+  carpeta de salida nunca se reprocesan.
+- **Salida:** por defecto `<entrada>/muestras`; se puede elegir cualquier otra.
+- **Muestra:** lado más largo (no agranda imágenes más chicas), dpi y calidad JPEG.
+- **Nombre:** prefijo, sufijo, nombre nuevo para todo el lote (se numera solo),
+  numeración opcional (dígitos y número inicial) y qué hacer si ya existe
+  (agregar `(2)`, sobrescribir con confirmación, o saltar). Muestra un ejemplo del
+  nombre final y la tabla enseña el nombre de cada archivo antes de convertir.
+- Convierte en varios procesos a la vez (hasta 4) sin congelar la ventana, y se puede
+  cancelar. Recuerda los ajustes entre sesiones.
+
+## Consola
 
 ```
 python exportar_muestras_rgb.py                              (sobre la carpeta actual)
 python exportar_muestras_rgb.py "G:\ruta\del\cliente"
 python exportar_muestras_rgb.py "G:\ruta" --lado 1600 --calidad 85 --dpi 72 --subcarpeta pruebas
+python exportar_muestras_rgb.py "G:\ruta" --salida "D:\envios" --prefijo e22_ --sufijo _muestra
 ```
 
 | Opción | Default | Significado |
 |---|---|---|
-| `carpeta` (posicional) | `.` | Carpeta que contiene los JPG de impresión. |
+| `carpeta` (posicional) | `.` | Carpeta que contiene los JPG/TIFF de impresión. |
 | `--subcarpeta` | `muestras` | Nombre de la subcarpeta de salida, dentro de `carpeta`. |
+| `--salida` | — | Carpeta de salida completa (reemplaza a `--subcarpeta`). |
 | `--lado` | `2000` | Píxeles del lado **más largo** de la muestra (respeta la proporción). |
 | `--calidad` | `92` | Calidad JPEG. 92 ≈ 500-700 KB/pieza a 2000 px; 85 aligera para envío. |
 | `--dpi` | `72` | DPI escrito en los metadatos. No cambia los píxeles, solo la etiqueta. |
+| `--prefijo` / `--sufijo` | — | Texto antes / después del nombre original. |
+| `--si-existe` | `numerar` | `numerar` (agrega ` (2)`), `sobrescribir` o `saltar`. |
 
-**Dependencia:** `pip install pillow` (littlecms ya viene dentro de Pillow).
-
-Al terminar imprime una tabla de verificación (dimensiones, modo, dpi, peso y perfil
+Al terminar imprime una tabla de verificación (dimensiones, peso y perfil de origen
 de cada salida) y avisa de cualquier archivo que no procesó.
+
+## Formatos de entrada
+
+| Entrada | Qué pasa |
+|---|---|
+| CMYK 8 bits con perfil (JPG o TIFF sin comprimir/LZW/ZIP) | Se convierte desde su perfil a sRGB. |
+| CMYK sin perfil | **Se salta con aviso.** |
+| RGB con perfil (p. ej. Adobe RGB) | Se convierte desde su perfil a sRGB. |
+| RGB sin perfil | Se asume sRGB y solo se reduce. |
+| Escala de grises (con o sin perfil) | Igual que RGB. |
+| Con transparencia (RGBA) | Se aplana sobre blanco. |
+| 16 bits por canal | **Se salta con aviso** (pendiente: probar con TIFF reales). |
 
 ## Qué hace por dentro
 
-1. Toma el **perfil ICC incrustado** de cada JPG como origen de color. No hay perfil
+1. Toma el **perfil ICC incrustado** de cada archivo como origen de color. No hay perfil
    hardcodeado: cada pieza aporta el suyo.
 2. **Reduce primero** (LANCZOS al lado mayor pedido) y convierte el perfil después.
    La conversión ICC es por píxel independiente, así que el color sale igual pero
@@ -49,10 +88,10 @@ de cada salida) y avisa de cualquier archivo que no procesó.
 
 ## Reglas de seguridad
 
-- **Nunca toca los originales:** solo escribe dentro de la subcarpeta de salida.
+- **Nunca toca los originales:** solo escribe dentro de la carpeta de salida.
 - Un **CMYK sin perfil incrustado se salta con aviso**, porque sin origen no hay forma
    honesta de convertir el color. Mejor un aviso que un color inventado.
-- Un JPG que ya es RGB se reconvierte desde su perfil a sRGB (o solo se reduce si no
+- Un archivo que ya es RGB se reconvierte desde su perfil a sRGB (o solo se reduce si no
    trae perfil).
 
 ## Gotchas de color verificados (no volver a descubrirlos)
