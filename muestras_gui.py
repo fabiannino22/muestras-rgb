@@ -13,7 +13,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from PySide6.QtCore import (
     QLibraryInfo, QLocale, QObject, QSettings, Qt, QThread, QTranslator, QUrl, Signal,
 )
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
     QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -21,12 +21,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import hoja_contactos
 import muestras_core as core
 
 APP = "muestras-rgb"
 ORG = "e22lab"
 COL_ARCHIVO, COL_SALIDA, COL_TAMANO, COL_PESO, COL_PERFIL, COL_ESTADO = range(6)
 ELEGIR_ICC = "<elegir>"
+MARCAS = {"": "Sin marca", "texto": "Texto", "logo": "Logo (PNG)"}
+TEXTO_POSICION = {"centro": "Centro, en diagonal", "mosaico": "Mosaico", "esquina": "Esquina"}
+MARCA_DEFAULT = "MUESTRA · NO IMPRIMIR"
 TEXTO_SI_EXISTE = {"numerar": "Agregar (2), (3)…", "sobrescribir": "Sobrescribir",
                    "saltar": "Saltar"}
 
@@ -133,9 +137,44 @@ class Ventana(QMainWindow):
         fn.addRow("Si ya existe:", self.cb_existe)
         fn.addRow("Ejemplo:", self.lb_ejemplo)
 
+        # --- Entrega: marca de agua y hoja de contactos --------------------------
+        entrega = QGroupBox("Entrega")
+        fe = QFormLayout(entrega)
+        self.cb_marca = QComboBox()
+        for clave, texto in MARCAS.items():
+            self.cb_marca.addItem(texto, clave)
+        self.ed_marca = QLineEdit(MARCA_DEFAULT)
+        self.ed_logo = QLineEdit()
+        self.ed_logo.setPlaceholderText("PNG con fondo transparente")
+        self.cb_posicion = QComboBox()
+        for clave, texto in TEXTO_POSICION.items():
+            self.cb_posicion.addItem(texto, clave)
+        self.sp_opacidad = self._spin(5, 100, 35, " %")
+        pos = QHBoxLayout()
+        pos.addWidget(self.cb_posicion, 1)
+        pos.addWidget(QLabel("Opacidad:"))
+        pos.addWidget(self.sp_opacidad)
+        self.chk_hoja = QCheckBox("Crear hoja de contactos (PDF) al terminar")
+        self.ed_titulo = QLineEdit()
+        self.ed_titulo.setPlaceholderText("(vacío = nombre de la carpeta)")
+        self.cb_pagina = QComboBox()
+        self.cb_pagina.addItem("Carta", "carta")
+        self.cb_pagina.addItem("A4", "a4")
+        fe.addRow("Marca de agua:", self.cb_marca)
+        fe.addRow("Texto:", self.ed_marca)
+        fe.addRow("Logo:", self._con_boton(self.ed_logo, self.elegir_logo))
+        fe.addRow("Posición:", pos)
+        fe.addRow("", self.chk_hoja)
+        fe.addRow("Título:", self.ed_titulo)
+        fe.addRow("Página:", self.cb_pagina)
+        for w in (self.cb_marca, self.chk_hoja):
+            (w.currentIndexChanged if isinstance(w, QComboBox) else w.toggled).connect(
+                self.actualizar_entrega)
+
         opciones = QHBoxLayout()
         opciones.addWidget(tamano)
         opciones.addWidget(nombre, 1)
+        opciones.addWidget(entrega, 1)
 
         # --- Tabla ----------------------------------------------------------
         self.tabla = QTableWidget(0, 6)
@@ -175,7 +214,8 @@ class Ventana(QMainWindow):
         self.chk_numerar.toggled.connect(self.actualizar_nombres)
         self.cb_existe.currentIndexChanged.connect(self.actualizar_nombres)
         self.cargar_entrada()
-        self.resize(1000, 700)
+        self.actualizar_entrega()
+        self.resize(1280, 780)
 
     # --- utilidades de construccion ---------------------------------------
     def _spin(self, minimo, maximo, valor, sufijo):
@@ -206,13 +246,26 @@ class Ventana(QMainWindow):
         self.sp_digitos.setValue(int(a.value("digitos", 3)))
         self.cb_existe.setCurrentIndex(max(0, self.cb_existe.findData(a.value("si_existe", "numerar"))))
         self.poner_perfil(a.value("perfil_cmyk", ""))
+        self.cb_marca.setCurrentIndex(max(0, self.cb_marca.findData(a.value("marca", ""))))
+        self.ed_marca.setText(a.value("marca_texto", MARCA_DEFAULT))
+        self.ed_logo.setText(a.value("marca_logo", ""))
+        self.cb_posicion.setCurrentIndex(
+            max(0, self.cb_posicion.findData(a.value("marca_posicion", "centro"))))
+        self.sp_opacidad.setValue(int(a.value("marca_opacidad", 35)))
+        self.chk_hoja.setChecked(a.value("hoja", False, type=bool))
+        self.cb_pagina.setCurrentIndex(max(0, self.cb_pagina.findData(a.value("pagina", "carta"))))
 
     def guardar_ajustes(self):
         a = self.ajustes
         o = self.opciones()
         a.setValue("entrada", self.ed_entrada.text())
+        a.setValue("marca", self.cb_marca.currentData())
+        a.setValue("marca_texto", self.ed_marca.text())
+        a.setValue("marca_logo", self.ed_logo.text())
+        a.setValue("hoja", self.chk_hoja.isChecked())
+        a.setValue("pagina", self.cb_pagina.currentData())
         for clave in ("lado", "dpi", "calidad", "prefijo", "sufijo", "numerar", "digitos", "si_existe",
-                      "perfil_cmyk"):
+                      "perfil_cmyk", "marca_posicion", "marca_opacidad"):
             a.setValue(clave, getattr(o, clave))
 
     def closeEvent(self, ev):
@@ -285,7 +338,46 @@ class Ventana(QMainWindow):
             prefijo=self.ed_prefijo.text(), sufijo=self.ed_sufijo.text(),
             nombre_nuevo=self.ed_nuevo.text(), numerar=self.chk_numerar.isChecked(),
             digitos=self.sp_digitos.value(), inicio=self.sp_inicio.value(),
-            si_existe=self.cb_existe.currentData(), perfil_cmyk=self.cb_perfil.currentData())
+            si_existe=self.cb_existe.currentData(), perfil_cmyk=self.cb_perfil.currentData(),
+            marca_texto=self.ed_marca.text() if self.cb_marca.currentData() == "texto" else "",
+            marca_logo=self.ed_logo.text().strip() if self.cb_marca.currentData() == "logo" else "",
+            marca_posicion=self.cb_posicion.currentData(), marca_opacidad=self.sp_opacidad.value())
+
+    # --- entrega --------------------------------------------------------------
+    def actualizar_entrega(self, *_):
+        marca = self.cb_marca.currentData()
+        self.ed_marca.setEnabled(marca == "texto")
+        self.ed_logo.setEnabled(marca == "logo")
+        self.cb_posicion.setEnabled(bool(marca))
+        self.sp_opacidad.setEnabled(bool(marca))
+        self.ed_titulo.setEnabled(self.chk_hoja.isChecked())
+        self.cb_pagina.setEnabled(self.chk_hoja.isChecked())
+
+    def elegir_logo(self):
+        ruta, _ = QFileDialog.getOpenFileName(self, "Logo para la marca de agua",
+                                              self.ed_logo.text(), "Imágenes (*.png)")
+        if ruta:
+            self.ed_logo.setText(ruta)
+            self.cb_marca.setCurrentIndex(self.cb_marca.findData("logo"))
+
+    def titulo_hoja(self):
+        return (self.ed_titulo.text().strip()
+                or os.path.basename(os.path.normpath(self.ed_entrada.text().strip())) or "Muestras")
+
+    def crear_hoja(self):
+        destino = self.ed_salida.text().strip()
+        titulo = self.titulo_hoja()
+        ruta = os.path.join(destino, f"{core.limpiar_nombre(titulo) or 'Muestras'} - hoja de contactos.pdf")
+        try:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            paginas = hoja_contactos.crear(
+                [r for r in self.resultados if r], ruta, titulo, self.cb_pagina.currentData())
+            return f" · hoja de contactos: {paginas} pág."
+        except Exception as e:
+            QMessageBox.warning(self, APP, f"No se pudo crear la hoja de contactos:\n{e}")
+            return ""
+        finally:
+            QApplication.restoreOverrideCursor()
 
     # --- perfil para CMYK sin perfil --------------------------------------------
     def poner_perfil(self, ruta):
@@ -343,6 +435,12 @@ class Ventana(QMainWindow):
             QMessageBox.information(self, APP, "Elige una carpeta de salida.")
             return
         o = self.opciones()
+        if self.cb_marca.currentData() == "logo":
+            try:
+                core.Image.open(o.marca_logo).verify()
+            except Exception:
+                QMessageBox.information(self, APP, "Elige un logo PNG válido para la marca de agua.")
+                return
         plan = core.planear_salidas(self.archivos, destino, o)
         if o.si_existe == "sobrescribir":
             existentes = sum(1 for s in plan if s and os.path.exists(s))
@@ -352,6 +450,7 @@ class Ventana(QMainWindow):
                 return
         self.guardar_ajustes()
         self.ok = self.saltados = self.peso = 0
+        self.resultados = [None] * len(self.archivos)
         self.barra.setRange(0, len(self.archivos))
         self.barra.setValue(0)
         for fila, salida in enumerate(plan):
@@ -368,6 +467,7 @@ class Ventana(QMainWindow):
         self.hilo.start()
 
     def al_avanzar(self, fila, r):
+        self.resultados[fila] = r
         estado = {"ok": "✔ listo", "aviso": "✔ listo, ojo", "saltado": "⚠ saltado",
                   "error": "✖ error"}[r.estado]
         if r.motivo:
@@ -395,6 +495,8 @@ class Ventana(QMainWindow):
         self.bt_convertir.setText("Convertir")
         if cancelado:
             self.lb_resumen.setText(self.lb_resumen.text() + " · cancelado")
+        elif self.chk_hoja.isChecked() and self.ok:
+            self.lb_resumen.setText(self.lb_resumen.text() + self.crear_hoja())
 
     def abrir_salida(self):
         d = self.ed_salida.text().strip()
@@ -411,13 +513,19 @@ def autoprueba(entrada, salida):
     """
     Ventana()
     archivos = core.listar_archivos(entrada)
-    opciones = core.Opciones(lado=500, si_existe="sobrescribir")
+    # Marca de agua y hoja de contactos: comprueban que la fuente y el icono de
+    # recursos/ quedaron dentro del paquete.
+    opciones = core.Opciones(lado=500, si_existe="sobrescribir", marca_texto=MARCA_DEFAULT,
+                             marca_posicion="mosaico")
     plan = core.planear_salidas(archivos, salida, opciones)
     with ProcessPoolExecutor(max_workers=2) as ex:
         resultados = list(ex.map(core.procesar, archivos, plan, [opciones] * len(archivos)))
     os.makedirs(salida, exist_ok=True)
+    if not os.path.isfile(core.recurso("icono.png")):
+        raise SystemExit("falta recursos/icono.png en el paquete")
+    paginas = hoja_contactos.crear(resultados, os.path.join(salida, "hoja.pdf"), "Autoprueba ñ")
     with open(os.path.join(salida, "autoprueba.txt"), "w", encoding="utf-8") as f:
-        f.write(f"muestras-rgb {core.VERSION}\n")
+        f.write(f"muestras-rgb {core.VERSION} · hoja de contactos: {paginas} pag.\n")
         for r in resultados:
             f.write(f"{r.estado}\t{os.path.basename(r.origen)}\t{r.motivo}\n")
     convertidos = sum(r.estado in ("ok", "aviso") for r in resultados)
@@ -429,6 +537,7 @@ def main():
     app = QApplication(sys.argv)
     app.setOrganizationName(ORG)
     app.setApplicationName(APP)
+    app.setWindowIcon(QIcon(core.recurso("icono.png")))
     # Botones de los dialogos estandar (Si/No, Cancelar, selector de carpetas) en el
     # idioma del sistema.
     traductor = QTranslator(app)

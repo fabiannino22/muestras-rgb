@@ -14,6 +14,7 @@ import argparse
 import os
 import time
 
+import hoja_contactos
 import muestras_core as core
 
 
@@ -38,6 +39,15 @@ def parse_args():
     p.add_argument("--sufijo", default="", help="Texto despues del nombre de cada muestra")
     p.add_argument("--perfil-cmyk", default="",
                    help="Perfil .icc a asumir en los CMYK sin perfil incrustado (default: saltarlos)")
+    p.add_argument("--marca-texto", default="",
+                   help='Marca de agua de texto, p. ej. "MUESTRA · NO IMPRIMIR"')
+    p.add_argument("--marca-logo", default="", help="Marca de agua con un logo PNG (manda sobre el texto)")
+    p.add_argument("--marca-posicion", choices=core.POSICIONES_MARCA, default="centro")
+    p.add_argument("--marca-opacidad", type=int, default=35, help="Opacidad de la marca en %% (default: 35)")
+    p.add_argument("--hoja-contactos", metavar="TITULO", default=None,
+                   help="Crea un PDF con todas las muestras y este titulo en la carpeta de salida")
+    p.add_argument("--pagina", choices=tuple(hoja_contactos.PAGINAS), default="carta",
+                   help="Tamano de pagina de la hoja de contactos (default: carta)")
     p.add_argument("--si-existe", choices=core.SI_EXISTE, default="numerar",
                    help="Si la muestra ya existe: numerar (default), sobrescribir o saltar")
     return p.parse_args()
@@ -49,7 +59,9 @@ def main():
     destino = os.path.abspath(args.salida) if args.salida else os.path.join(carpeta, args.subcarpeta)
     opciones = core.Opciones(lado=args.lado, calidad=args.calidad, dpi=args.dpi,
                              prefijo=args.prefijo, sufijo=args.sufijo, si_existe=args.si_existe,
-                             perfil_cmyk=args.perfil_cmyk)
+                             perfil_cmyk=args.perfil_cmyk, marca_texto=args.marca_texto,
+                             marca_logo=args.marca_logo, marca_posicion=args.marca_posicion,
+                             marca_opacidad=args.marca_opacidad)
 
     if args.perfil_cmyk and not core.es_perfil_cmyk(args.perfil_cmyk):
         raise SystemExit(f"--perfil-cmyk: {args.perfil_cmyk} no es un perfil ICC CMYK")
@@ -63,9 +75,11 @@ def main():
     total = 0
     saltados = []
     avisos = []
+    resultados = []
     t0 = time.time()
     for ruta, salida in zip(archivos, plan):
         r = core.procesar(ruta, salida, opciones)
+        resultados.append(r)
         nombre = os.path.basename(ruta)
         if r.estado in ("saltado", "error"):
             saltados.append((nombre, r.motivo))
@@ -78,6 +92,11 @@ def main():
     print("-" * 100)
     print(f"Total: {total/1024/1024:.1f} MB en {len(archivos)-len(saltados)} archivos, "
           f"{time.time()-t0:.0f}s")
+    if args.hoja_contactos is not None and any(r.estado in ("ok", "aviso") for r in resultados):
+        titulo = args.hoja_contactos or os.path.basename(carpeta)
+        pdf = os.path.join(destino, f"{core.limpiar_nombre(titulo) or 'Muestras'} - hoja de contactos.pdf")
+        paginas = hoja_contactos.crear(resultados, pdf, titulo, args.pagina)
+        print(f"Hoja de contactos: {pdf} ({paginas} pag.)")
     for nombre, motivo in avisos:
         print(f"OJO: {nombre}: {motivo}")
     for nombre, motivo in saltados:

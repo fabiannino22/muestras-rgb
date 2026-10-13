@@ -15,7 +15,9 @@ pared de impresión de un cliente (CMYK `Coated FOGRA39 (ISO 12647-2:2004)`,
 |---|---|
 | `muestras_gui.py` | **Interfaz gráfica** (prototipo): elige o arrastra la carpeta de entrada, la de salida, tamaño, dpi, calidad, prefijo/sufijo/renombrado y convierte el lote en paralelo con tabla de verificación. |
 | `exportar_muestras_rgb.py` | La misma conversión desde consola. |
-| `muestras_core.py` | La lógica de color y de nombres que comparten las dos. Solo lectura sobre los originales. |
+| `muestras_core.py` | La lógica de color, nombres y marca de agua que comparten las dos. Solo lectura sobre los originales. |
+| `hoja_contactos.py` | PDF con todas las muestras del lote, para mandar al cliente. |
+| `recursos/` | Ícono (y `generar_icono.py`, que lo dibuja) y la fuente Inter (OFL) para la marca y el PDF. |
 
 ![Interfaz gráfica](docs/captura.png)
 
@@ -36,6 +38,15 @@ python muestras_gui.py
 - **CMYK sin perfil:** saltarlos (default) o asumir un perfil. La lista trae los perfiles
   CMYK instalados en la máquina (con Adobe instalado aparecen SWOP, FOGRA39, GRACoL…) y
   permite elegir cualquier `.icc`. La muestra queda marcada con aviso y el perfil asumido.
+- **Entrega → marca de agua:** texto (por defecto "MUESTRA · NO IMPRIMIR") o un logo PNG,
+  al centro en diagonal, en mosaico o en la esquina, con opacidad ajustable.
+- **Entrega → hoja de contactos:** al terminar crea `<título> - hoja de contactos.pdf`
+  en la carpeta de salida, en Carta o A4, seis muestras por página con nombre, píxeles
+  y medida de impresión del original. Solo muestra notas útiles para el cliente (p. ej.
+  que la pieza lleva una tinta directa que no se simula); los avisos técnicos, como el
+  perfil asumido, se quedan en la app.
+
+  ![Hoja de contactos](docs/hoja_contactos.png)
 - **Nombre:** prefijo, sufijo, nombre nuevo para todo el lote (se numera solo),
   numeración opcional (dígitos y número inicial) y qué hacer si ya existe
   (agregar `(2)`, sobrescribir con confirmación, o saltar). Muestra un ejemplo del
@@ -86,6 +97,11 @@ python exportar_muestras_rgb.py "G:\ruta" --salida "D:\envios" --prefijo e22_ --
 | `--dpi` | `72` | DPI escrito en los metadatos. No cambia los píxeles, solo la etiqueta. |
 | `--prefijo` / `--sufijo` | — | Texto antes / después del nombre original. |
 | `--si-existe` | `numerar` | `numerar` (agrega ` (2)`), `sobrescribir` o `saltar`. |
+| `--marca-texto` / `--marca-logo` | — | Marca de agua de texto o con un logo PNG. |
+| `--marca-posicion` | `centro` | `centro`, `mosaico` o `esquina`. |
+| `--marca-opacidad` | `35` | Opacidad de la marca en %. |
+| `--hoja-contactos TITULO` | — | Crea la hoja de contactos en PDF con ese título. |
+| `--pagina` | `carta` | `carta` o `a4` para la hoja de contactos. |
 | `--perfil-cmyk` | — | `.icc` a asumir en los CMYK sin perfil (si no se da, se saltan). |
 
 Al terminar imprime una tabla de verificación (dimensiones, peso y perfil de origen

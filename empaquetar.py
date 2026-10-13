@@ -72,6 +72,10 @@ def main():
         "--distpath", DIST,
         "--workpath", os.path.join(RAIZ, "build"),
         "--specpath", os.path.join(RAIZ, "build"),
+        # Fuentes de la marca de agua / hoja de contactos y el icono de la ventana.
+        "--add-data", f"{os.path.join(RAIZ, 'recursos', 'fuentes')}{os.pathsep}recursos/fuentes",
+        "--add-data", f"{os.path.join(RAIZ, 'recursos', 'icono.png')}{os.pathsep}recursos",
+        "--icon", os.path.join(RAIZ, "recursos", "icono.icns" if mac else "icono.ico"),
         # Nada de esto se usa; solo engorda el paquete.
         "--exclude-module", "tkinter",
         "--exclude-module", "numpy",

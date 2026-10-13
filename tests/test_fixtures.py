@@ -15,6 +15,7 @@ from PIL import Image, ImageChops, ImageStat
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
+import hoja_contactos  # noqa: E402
 import muestras_core as core  # noqa: E402
 
 FIXTURES = os.path.join(RAIZ, "fixtures", "tiff")
@@ -113,6 +114,53 @@ class TestCmykSinPerfil(unittest.TestCase):
     def test_buscar_perfiles_cmyk(self):
         encontrados = core.buscar_perfiles_cmyk([os.path.dirname(self.fogra)])
         self.assertEqual([d for d, _ in encontrados], ["Coated FOGRA39 (ISO 12647-2:2004)"])
+
+
+class TestEntrega(unittest.TestCase):
+    """Marca de agua y hoja de contactos."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.origen = os.path.join(FIXTURES, "08bit_lzw.tif")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def _muestra(self, nombre, **marca):
+        r = core.procesar(self.origen, os.path.join(self.tmp.name, nombre + ".jpg"),
+                          core.Opciones(lado=400, **marca))
+        self.assertEqual(r.estado, "ok", r.motivo)
+        return r
+
+    def test_marca_cambia_pixeles_no_tamano(self):
+        limpia = self._muestra("limpia")
+        with Image.open(limpia.salida) as ref:
+            ref.load()
+        logo = os.path.join(RAIZ, "recursos", "icono.png")
+        for pos in core.POSICIONES_MARCA:
+            for clave, marca in (("texto", {"marca_texto": "MUESTRA · Ñ"}), ("logo", {"marca_logo": logo})):
+                with self.subTest(pos=pos, tipo=clave):
+                    r = self._muestra(f"{clave}_{pos}", marca_posicion=pos, **marca)
+                    with Image.open(r.salida) as im:
+                        self.assertEqual(im.size, ref.size)
+                        self.assertGreater(max(ImageStat.Stat(ImageChops.difference(im, ref)).mean), 0.05)
+
+    def test_hoja_de_contactos(self):
+        res = [self._muestra(f"h{i}") for i in range(7)]
+        res.append(core.Resultado(origen="x.tif", estado="saltado"))   # se ignora
+        pdf = os.path.join(self.tmp.name, "hoja.pdf")
+        self.assertEqual(hoja_contactos.crear(res, pdf, "Catálogo ñ", "a4"), 2)   # 6 por página
+        with open(pdf, "rb") as f:
+            self.assertTrue(f.read(5) == b"%PDF-")
+        self.assertEqual(hoja_contactos.medida_impresion(res[0]), "16.9 × 16.9 cm a 300 dpi")
+
+    def test_nota_cliente_solo_tinta_directa(self):
+        r = core.procesar(os.path.join(FIXTURES, "08bit_tintadirecta_lzw.tif"),
+                          os.path.join(self.tmp.name, "td.jpg"), core.Opciones(lado=300))
+        self.assertIn("Tinta directa prueba", r.nota_cliente)
+        self.assertEqual(self._muestra("sin_nota").nota_cliente, "")
 
 
 if __name__ == "__main__":

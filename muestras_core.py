@@ -20,18 +20,33 @@ import struct
 import sys
 from dataclasses import dataclass
 
-from PIL import Image, ImageCms
+from PIL import Image, ImageCms, ImageDraw, ImageFont
 
 # Las piezas de impresion superan el limite anti-"image bomb" de Pillow.
 Image.MAX_IMAGE_PIXELS = None
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 EXTENSIONES = (".jpg", ".jpeg", ".tif", ".tiff")
 
 perfil_srgb = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
 SRGB_BYTES = perfil_srgb.tobytes()
 BPC = ImageCms.Flags.BLACKPOINTCOMPENSATION
+
+POSICIONES_MARCA = ("centro", "mosaico", "esquina")
+
+
+def recurso(*partes):
+    """Ruta a un archivo de recursos/, tambien dentro del ejecutable de PyInstaller."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "recursos", *partes)
+
+
+def fuente(tamano, negrita=False):
+    # Inter (OFL, recursos/fuentes): la fuente interna de Pillow no tiene acentos ni ñ.
+    return ImageFont.truetype(recurso("fuentes", "Inter-Bold.otf" if negrita else "Inter-Regular.otf"),
+                              max(1, int(tamano)))
+
 
 # Que hacer si el archivo de salida ya existe en disco.
 SI_EXISTE = ("numerar", "sobrescribir", "saltar")
@@ -50,6 +65,10 @@ class Opciones:
     inicio: int = 1
     si_existe: str = "numerar"
     perfil_cmyk: str = ""       # .icc a asumir en CMYK sin perfil; vacio = saltarlos
+    marca_texto: str = ""       # marca de agua de texto (vacio = sin texto)
+    marca_logo: str = ""        # PNG con transparencia (vacio = sin logo); manda sobre el texto
+    marca_posicion: str = "centro"
+    marca_opacidad: int = 35    # %
 
 
 @dataclass
@@ -63,6 +82,10 @@ class Resultado:
     ancho: int = 0
     alto: int = 0
     peso: int = 0
+    ancho_origen: int = 0       # pixeles y dpi del original, para la medida de impresion
+    alto_origen: int = 0
+    dpi_origen: float = 0.0
+    nota_cliente: str = ""      # lo que si debe ver el cliente en la hoja de contactos
 
 
 def listar_archivos(carpeta, recursivo=False):
@@ -210,6 +233,76 @@ def a_rgb(img):
 
 MODOS_SOPORTADOS = ("CMYK", "RGB", "RGBA", "L", "LA")
 
+
+def _sello_texto(texto, ancho):
+    """Texto blanco con contorno oscuro (se lee sobre fondos claros y oscuros), RGBA."""
+    prueba = fuente(100, negrita=True)
+    caja = prueba.getbbox(texto, stroke_width=4)
+    escala = ancho / max(1, caja[2] - caja[0])
+    f = fuente(100 * escala, negrita=True)
+    borde = max(1, round(4 * escala))
+    x0, y0, x1, y1 = f.getbbox(texto, stroke_width=borde)
+    sello = Image.new("RGBA", (x1 - x0, y1 - y0))
+    ImageDraw.Draw(sello).text((-x0, -y0), texto, font=f, fill=(255, 255, 255, 255),
+                                stroke_width=borde, stroke_fill=(0, 0, 0, 170))
+    return sello
+
+
+@functools.lru_cache(maxsize=2)
+def _logo(ruta):
+    with Image.open(ruta) as im:
+        return im.convert("RGBA")
+
+
+def _con_opacidad(sello, opacidad):
+    alfa = sello.getchannel("A").point(lambda a: a * opacidad // 100)
+    sello = sello.copy()
+    sello.putalpha(alfa)
+    return sello
+
+
+def aplicar_marca(img, opciones):
+    """Marca de agua (logo o texto) sobre una imagen RGB; la devuelve nueva."""
+    if not (opciones.marca_logo or opciones.marca_texto.strip()):
+        return img
+    w, h = img.size
+    pos = opciones.marca_posicion
+    proporcion = {"centro": 0.9, "mosaico": 0.32, "esquina": 0.32}[pos]
+    if opciones.marca_logo:
+        logo = _logo(opciones.marca_logo)
+        ancho = max(1, int(w * proporcion if pos != "centro" else min(w, h) * 0.5))
+        sello = logo.resize((ancho, max(1, round(logo.height * ancho / logo.width))), Image.LANCZOS)
+        girar = False
+    else:
+        sello = _sello_texto(opciones.marca_texto.strip(), int(max(w, h) * proporcion))
+        girar = pos != "esquina"
+    if girar:
+        # En diagonal, a lo largo de la diagonal de la imagen.
+        import math
+        sello = sello.rotate(math.degrees(math.atan2(h, w)), expand=True, resample=Image.BICUBIC)
+        if pos == "centro" and (sello.width > w or sello.height > h):
+            f = min(w / sello.width, h / sello.height) * 0.95
+            sello = sello.resize((max(1, int(sello.width * f)), max(1, int(sello.height * f))),
+                                 Image.LANCZOS)
+    sello = _con_opacidad(sello, opciones.marca_opacidad)
+    capa = Image.new("RGBA", img.size)
+    if pos == "centro":
+        capa.alpha_composite(sello, ((w - sello.width) // 2, (h - sello.height) // 2))
+    elif pos == "esquina":
+        margen = int(min(w, h) * 0.03)
+        capa.alpha_composite(sello, (w - sello.width - margen, h - sello.height - margen))
+    else:
+        # Mosaico en filas alternadas, sobre un lienzo con margen para que los bordes
+        # tambien queden cubiertos; luego se recorta al tamano de la imagen.
+        sw, sh = sello.size
+        grande = Image.new("RGBA", (w + 2 * sw, h + 2 * sh))
+        paso_x, paso_y = int(sw * 1.4), int(sh * 1.6)
+        for fila, y in enumerate(range(0, h + sh, paso_y)):
+            for x in range((paso_x // 2) * (fila % 2), w + sw, paso_x):
+                grande.alpha_composite(sello, (x, y))
+        capa = grande.crop((sw // 2, sh // 2, sw // 2 + w, sh // 2 + h))
+    return Image.alpha_composite(img.convert("RGBA"), capa).convert("RGB")
+
 TAG_PHOTOSHOP = 34377      # recursos de imagen de Photoshop dentro del TIFF
 
 
@@ -267,6 +360,8 @@ def procesar(ruta, salida, opciones):
     try:
         with Image.open(ruta) as img:
             r.modo_origen = img.mode
+            r.ancho_origen, r.alto_origen = img.size
+            r.dpi_origen = float((img.info.get("dpi") or (0, 0))[0] or 0)
             icc = img.info.get("icc_profile")
             r.perfil_origen = descripcion_perfil(icc)
             if img.mode not in MODOS_SOPORTADOS:
@@ -288,11 +383,14 @@ def procesar(ruta, salida, opciones):
             directas = tintas_directas(img)
             if directas:
                 r.estado = "aviso"
-                r.motivo = (r.motivo + "; " if r.motivo else "") + ("la muestra no incluye la tinta directa "
-                            + ", ".join(f"«{n}»" for n in directas) + " (solo CMYK)")
+                nombres = ", ".join(f"«{n}»" for n in directas)
+                r.motivo = (r.motivo + "; " if r.motivo else "") + (
+                    f"la muestra no incluye la tinta directa {nombres} (solo CMYK)")
+                r.nota_cliente = (f"Lleva la tinta directa {nombres}, que no se puede simular "
+                                  "en esta muestra.")
             img.thumbnail((opciones.lado, opciones.lado), Image.LANCZOS)
             img.info["icc_profile"] = icc
-            rgb = a_rgb(img)
+            rgb = aplicar_marca(a_rgb(img), opciones)
             os.makedirs(os.path.dirname(salida), exist_ok=True)
             rgb.save(salida, "JPEG", quality=opciones.calidad, optimize=True,
                      progressive=True, icc_profile=SRGB_BYTES,
