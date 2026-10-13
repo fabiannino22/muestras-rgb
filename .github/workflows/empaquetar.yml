@@ -16,6 +16,7 @@ on:
       - "requirements.txt"
       - "tests/**"
       - "fixtures/tiff/**"
+      - "recursos/**"
       - ".github/workflows/empaquetar.yml"
   pull_request:
   workflow_dispatch:
